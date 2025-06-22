@@ -376,6 +376,8 @@ plt.tight_layout()
 plt.show()
 
 ```
+</details>
+
 
 ## IOU Calculation (py)
 <details>
@@ -417,6 +419,8 @@ print(f"IoU (Q8.8 fixed) : {iou_fixed} => binary: {bin(iou_fixed)}")
 print(f"IoU (float)      : {iou_float:.6f}")
 
 ```
+</details>
+
 
 ## NMS using floting point coordinates (py)
 <details>
@@ -494,6 +498,8 @@ for b in result_boxes:
     print(f"{b[0]:.1f}, {b[1]:.1f}, {b[2]:.1f}, {b[3]:.1f}, {b[4]:.4f}")
 
 ```
+</details>
+
 
 ## IOU Calculation Modified Algorithm (Verilog)
 <details>
@@ -526,6 +532,8 @@ module calculate_iou (
 
 endmodule
 ```
+</details>
+
 
 ## NMS UNIT (Verilog)
 <details>
@@ -897,6 +905,8 @@ module nms_top #(
 endmodule
 
 ```
+</details>
+
 ## Testbench (Verilog)
 <details>
   <summary>All necessary signals are provided in testbench</summary>
@@ -963,7 +973,7 @@ module nms_top_tb();
     end
 endmodule
 ```
-
+</details>
 
 
 
