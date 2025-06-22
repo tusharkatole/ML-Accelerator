@@ -1,6 +1,6 @@
 # ML-Accelerator(Non Maximum Suppression)
 
-## Pretreatment Unit
+## Pretreatment Unit (py)
 <details>
   <summary>Python code to generate coordinates of Bounding Boxes</summary>
 
