@@ -3,8 +3,8 @@
 ## CONTENTS
 
 1. [Non Maximum Suppression using approximate IOU formula without pipelining](#Non-Maximum-Suppression-using-approximate-IOU-formula-without-pipelining)
-2. [Non Maximum Suppression using general IOU formula without pipelining](#Non Maximum Suppression using general IOU formula without pipelining)
-3. [Non Maximum Suppression using general IOU formula pipelining](#Non Maximum Suppression using general IOU formula pipelining)
+2. [Non Maximum Suppression using general IOU formula without pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-without-pipelining)
+3. [Non Maximum Suppression using general IOU formula pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-pipelining)
 
 # **Non Maximum Suppression using approximate IOU formula without pipelining**
 
