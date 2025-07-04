@@ -2021,3 +2021,110 @@ module nms_top_tb();
 endmodule
 ```
 </details>
+
+
+## calculate_iou (Method 1- verilog)
+<details>
+  <summary>Date:4 july 2025</summary>
+
+```c
+module calculate_iou (
+    input  [17:0] x1, y1, w1, h1,
+    input  [17:0] x2, y2, w2, h2,
+    output reg [17:0] iou
+);
+    reg [17:0] x1w1, x2w2, y1h1, y2h2;
+    reg [17:0] dx, dy;
+    reg [17:0] inter, denom;
+    reg [35:0] scaled_inter;
+    
+    always @(*) begin
+        // Calculate rectangle boundaries
+        x1w1 = x1 + w1;
+        x2w2 = x2 + w2;
+        y1h1 = y1 + h1;
+        y2h2 = y2 + h2;
+        
+        // Calculate intersection dimensions
+        dx = (x1w1 < x2w2 ? x1w1 : x2w2) - (x1 > x2 ? x1 : x2);
+        dy = (y1h1 < y2h2 ? y1h1 : y2h2) - (y1 > y2 ? y1 : y2);
+        
+        // Calculate intersection and union (using your formula)
+        inter = dx + dy;
+        denom = (w1 + h1 > w2 + h2) ? (w1 + h1) : (w2 + h2);
+        
+        // Scale and calculate final IOU (keeping your formula)
+        scaled_inter = (denom != 0) ? (inter << 8) : 0;
+        iou = (denom != 0) ? scaled_inter / denom : 18'd0;
+    end
+
+endmodule
+```
+## calculate_iou (Method 2- verilog)
+<details>
+  <summary>Date:4 july 2025</summary>
+
+```c
+module calculate_iou (
+    input clk,
+    input [17:0] x1, y1, w1, h1,
+    input [17:0] x2, y2, w2, h2,
+    output reg [17:0] iou
+);
+    // Stage 1: Calculate rectangle boundaries
+    reg [17:0] x1w1, x2w2, y1h1, y2h2;
+    reg [17:0] x1_reg, x2_reg, y1_reg, y2_reg, w1_reg, w2_reg, h1_reg, h2_reg;
+    
+    always @(posedge clk) begin
+        x1w1 <= x1 + w1;
+        x2w2 <= x2 + w2;
+        y1h1 <= y1 + h1;
+        y2h2 <= y2 + h2;
+        x1_reg <= x1;
+        x2_reg <= x2;
+        y1_reg <= y1;
+        y2_reg <= y2;
+        w1_reg <= w1;
+        w2_reg <= w2;
+        h1_reg <= h1;
+        h2_reg <= h2;
+    end
+    
+    // Stage 2: Calculate intersection and union components
+    reg [17:0] dx, dy, inter, denom;
+    reg [17:0] x1w1_reg, x2w2_reg, y1h1_reg, y2h2_reg;
+    
+    always @(posedge clk) begin
+        // Register the boundary values
+        x1w1_reg <= x1w1;
+        x2w2_reg <= x2w2;
+        y1h1_reg <= y1h1;
+        y2h2_reg <= y2h2;
+        
+        // Calculate your custom algorithm components
+        dx <= (x1w1 < x2w2 ? x1w1 : x2w2) - (x1_reg > x2_reg ? x1_reg : x2_reg);
+        dy <= (y1h1 < y2h2 ? y1h1 : y2h2) - (y1_reg > y2_reg ? y1_reg : y2_reg);
+        inter <= dx + dy;
+        denom <= ((w1_reg + h1_reg) > (w2_reg + h2_reg)) ? (w1_reg + h1_reg) : (w2_reg + h2_reg);
+    end
+    
+    // Stage 3: Final IOU Calculation
+    reg [35:0] scaled_inter;
+    
+    always @(posedge clk) begin
+        if (denom != 0) begin
+            scaled_inter <= inter * 256;
+            iou <= scaled_inter / denom;
+        end else begin
+            iou <= 18'd0;
+        end
+    end
+    
+endmodule
+```
+
+
+
+
+
+
