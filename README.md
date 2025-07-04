@@ -2060,6 +2060,12 @@ module calculate_iou (
 
 endmodule
 ```
+
+
+</details>
+
+
+
 ## calculate_iou (Method 2- verilog)
 <details>
   <summary>Date:4 july 2025</summary>
@@ -2122,6 +2128,8 @@ module calculate_iou (
     
 endmodule
 ```
+
+</details>
 
 
 
