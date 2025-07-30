@@ -522,6 +522,9 @@ endmodule
 
 ## A-IoU1
 
+<details>
+  <summary>Verilog: <code>calculate_iou</code> module (click to expand)</summary>
+
 ```
 module calculate_iou (
     input wire clk,
@@ -637,6 +640,13 @@ module calculate_iou (
 endmodule
 
 ```
+
+</details>
+
+<details>
+  <summary>Verilog: <code>nms_top</code> module (click to expand)</summary>
+
+
 ## NMS_TOP_Code
 
 ```
@@ -1053,6 +1063,7 @@ module nms_top #(
 endmodule
 
 ```
+</details>
 
 # **Non Maximum Suppression using approximate IOU formula without pipelining**
 
