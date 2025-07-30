@@ -15,6 +15,10 @@ Final Codes
 
 Our Design that eliminates multiplications and divisions
 
+<details>
+  <summary>Verilog: <code>calculate_iou</code> module (click to expand)</summary>
+
+
 ```
 module calculate_iou (
     input wire clk,
@@ -504,6 +508,10 @@ module nms_top #(
 endmodule
 
 ```
+
+
+</details>
+
 # **A-IoU1(Standard IoU formulation, including multiplications and divisions)**
 
 ## A-IoU1
