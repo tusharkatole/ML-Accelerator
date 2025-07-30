@@ -11,7 +11,7 @@ Final Codes
 
 # **A-IoU2(Our Design that eliminates multiplications and divisions)**
 
-## A-IoU2_Code
+## A-IoU2
 
 ```
 module calculate_iou (
@@ -504,7 +504,7 @@ endmodule
 ```
 # **A-IoU1(Standard IoU formulation, including multiplications and divisions)**
 
-## A-IoU1_Code
+## A-IoU1
 
 ```
 module calculate_iou (
