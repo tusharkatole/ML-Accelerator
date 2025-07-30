@@ -17,7 +17,7 @@
 Our Design that eliminates multiplications and divisions
 
 <details>
-  <summary>Verilog: <code>calculate_iou</code> module (click to expand)</summary>
+  <summary>Verilog: <code>calculate_iou</code> module </summary>
 
 
 ```
@@ -96,7 +96,7 @@ endmodule
 
 
 <details>
-  <summary>Verilog: <code>nms_top</code> module (click to expand)</summary>
+  <summary>Verilog: <code>nms_top</code> module </summary>
 
 
 ## NMS_TOP_Code
@@ -526,7 +526,7 @@ endmodule
 Standard IoU formulation, including multiplications and divisions
 
 <details>
-  <summary>Verilog: <code>calculate_iou</code> module (click to expand)</summary>
+  <summary>Verilog: <code>calculate_iou</code> module </summary>
 
 ```
 module calculate_iou (
@@ -647,7 +647,7 @@ endmodule
 </details>
 
 <details>
-  <summary>Verilog: <code>nms_top</code> module (click to expand)</summary>
+  <summary>Verilog: <code>nms_top</code> module </summary>
 
 
 ## NMS_TOP_Code
