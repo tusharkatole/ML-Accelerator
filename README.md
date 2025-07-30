@@ -1,9 +1,11 @@
-# ML-Accelerator(Non Maximum Suppression)
+# Hardware implementation and verification of a Non-Maximum-Suppression (NMS) algorithm for object detection
 
 ## CONTENTS
-Final Codes
+### Final Codes
 1. [A-IoU2(Our Design that eliminates multiplications and divisions)](#A-IoU2)
 2. [A-IoU1(Standard IoU formulation, including multiplications and divisions)](#A-IoU1)
+
+### Previously worked
 3. [Non Maximum Suppression using approximate IOU formula without pipelining](#Non-Maximum-Suppression-using-approximate-IOU-formula-without-pipelining)
 4. [Non Maximum Suppression using general IOU formula without pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-without-pipelining)
 5. [Non Maximum Suppression using general IOU formula with pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-with-pipelining)
