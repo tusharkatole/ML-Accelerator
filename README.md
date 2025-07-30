@@ -10,10 +10,9 @@
 4. [Non Maximum Suppression using general IOU formula without pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-without-pipelining)
 5. [Non Maximum Suppression using general IOU formula with pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-with-pipelining)
 
+## A-IoU2
 
 # **A-IoU2(Our Design that eliminates multiplications and divisions)**
-
-## A-IoU2
 
 Our Design that eliminates multiplications and divisions
 
@@ -520,11 +519,11 @@ endmodule
 
 </details>
 
+## A-IoU1
+
 # **A-IoU1(Standard IoU formulation, including multiplications and divisions)**
 
 Standard IoU formulation, including multiplications and divisions
-
-## A-IoU1
 
 <details>
   <summary>Verilog: <code>calculate_iou</code> module (click to expand)</summary>
