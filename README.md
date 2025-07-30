@@ -9,7 +9,7 @@ Final Codes
 5. [Non Maximum Suppression using general IOU formula with pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-with-pipelining)
 
 
-## **A-IoU2(Our Design that eliminates multiplications and divisions)**
+# **A-IoU2(Our Design that eliminates multiplications and divisions)**
 
 ## A-IoU2
 
@@ -519,6 +519,8 @@ endmodule
 </details>
 
 # **A-IoU1(Standard IoU formulation, including multiplications and divisions)**
+
+Standard IoU formulation, including multiplications and divisions
 
 ## A-IoU1
 
