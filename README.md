@@ -91,6 +91,12 @@ module calculate_iou (
 
 endmodule
 ```
+</details>
+
+
+<details>
+  <summary>Verilog: <code>nms_top</code> module (click to expand)</summary>
+
 
 ## NMS_TOP_Code
 
