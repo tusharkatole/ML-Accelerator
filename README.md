@@ -1,10 +1,628 @@
 # ML-Accelerator(Non Maximum Suppression)
 
 ## CONTENTS
+Final Codes
+1. [A-IoU2(Our Design that eliminates multiplications and divisionss)](#A-IoU2)
+2. [A-IoU1(Standard IoU formulation, including multiplications and divisions)](#A-IoU1)
+3. [Non Maximum Suppression using approximate IOU formula without pipelining](#Non-Maximum-Suppression-using-approximate-IOU-formula-without-pipelining)
+4. [Non Maximum Suppression using general IOU formula without pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-without-pipelining)
+5. [Non Maximum Suppression using general IOU formula with pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-with-pipelining)
 
-1. [Non Maximum Suppression using approximate IOU formula without pipelining](#Non-Maximum-Suppression-using-approximate-IOU-formula-without-pipelining)
-2. [Non Maximum Suppression using general IOU formula without pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-without-pipelining)
-3. [Non Maximum Suppression using general IOU formula with pipelining](#Non-Maximum-Suppression-using-general-IOU-formula-with-pipelining)
+
+# **A-IoU2(Our Design that eliminates multiplications and divisionss**
+
+## A-IoU2_Code
+
+```
+module calculate_iou (
+    input wire clk,
+    input wire reset,
+    input wire start,
+    input  [17:0] x1, y1, w1, h1,
+    input  [17:0] x2, y2, w2, h2,
+    output reg [17:0] iou,  // Approximate IoU in Q8.8 = (dx + dy) >> 8
+    output reg done
+);
+    // Stage 0
+    reg [17:0] x1_s0, y1_s0, w1_s0, h1_s0;
+    reg [17:0] x2_s0, y2_s0, w2_s0, h2_s0;
+    reg        start_s0;
+
+    // Stage 1: Compute x+w, y+h
+    reg [17:0] x1w1_s1, x2w2_s1, y1h1_s1, y2h2_s1;
+    reg [17:0] x1_s1, x2_s1, y1_s1, y2_s1;
+    reg        start_s1;
+
+    // Stage 2: Compute dx, dy
+    reg [17:0] dx_s2, dy_s2;
+    reg        start_s2;
+
+    // Stage 3: Output iou = (dx + dy) >> 8
+    reg [17:0] sum_s3;
+    reg        start_s3;
+
+    always @(posedge clk) begin
+        if (reset) begin
+            iou <= 0;
+            done <= 0;
+            start_s0 <= 0;
+            start_s1 <= 0;
+            start_s2 <= 0;
+            start_s3 <= 0;
+        end else begin
+            // Stage 0: Latch inputs
+            if (start) begin
+                x1_s0 <= x1; y1_s0 <= y1; w1_s0 <= w1; h1_s0 <= h1;
+                x2_s0 <= x2; y2_s0 <= y2; w2_s0 <= w2; h2_s0 <= h2;
+                start_s0 <= 1;
+            end else begin
+                start_s0 <= 0;
+            end
+
+            // Stage 1: Calculate box boundaries
+            x1w1_s1 <= x1_s0 + w1_s0;
+            x2w2_s1 <= x2_s0 + w2_s0;
+            y1h1_s1 <= y1_s0 + h1_s0;
+            y2h2_s1 <= y2_s0 + h2_s0;
+            x1_s1 <= x1_s0; x2_s1 <= x2_s0;
+            y1_s1 <= y1_s0; y2_s1 <= y2_s0;
+            start_s1 <= start_s0;
+
+            // Stage 2: Compute intersection dimensions
+            dx_s2 <= (x1w1_s1 < x2w2_s1 ? x1w1_s1 : x2w2_s1) - (x1_s1 > x2_s1 ? x1_s1 : x2_s1);
+            dy_s2 <= (y1h1_s1 < y2h2_s1 ? y1h1_s1 : y2h2_s1) - (y1_s1 > y2_s1 ? y1_s1 : y2_s1);
+            start_s2 <= start_s1;
+
+            // Stage 3: Final computation and output
+            sum_s3 <= dx_s2 + dy_s2;
+            start_s3 <= start_s2;
+
+            // Output stage
+            iou <= sum_s3 >> 8;  // convert to Q8.8
+            done <= start_s3;
+        end
+    end
+
+endmodule
+```
+
+## NMS_TOP_Code
+
+```
+module nms_top #(
+    parameter NUM_BOXES = 10,                  // Number of boxes (configurable)
+    parameter IOU_THRESHOLD = 18'd300,         // 0.7 in Q8.8 format
+    parameter DATA_WIDTH = 18,
+    parameter ADDR_WIDTH = $clog2(NUM_BOXES * 5), // Dynamic address width
+    parameter TOTAL_ENTRIES = NUM_BOXES * 5    // Dynamic total entries
+)(
+    input wire clk,
+    input wire reset,
+    output wire [NUM_BOXES-1:0] suppressed
+);
+
+    // Block RAM signals
+    wire [DATA_WIDTH-1:0] data_out;
+    reg [ADDR_WIDTH-1:0] addr;
+    reg [ADDR_WIDTH-1:0] delayed_addr_1, delayed_addr_2;
+    
+    // 2-cycle delay for BRAM output to track which address the data corresponds to
+    always @(posedge clk) begin
+        if (reset) begin
+            delayed_addr_1 <= {ADDR_WIDTH{1'b1}}; // Invalid address initially
+            delayed_addr_2 <= {ADDR_WIDTH{1'b1}}; // Invalid address initially
+        end else begin
+            delayed_addr_1 <= addr;
+            delayed_addr_2 <= delayed_addr_1;
+        end
+    end
+
+    // Block RAM instance
+    blk_mem_gen_0 coe_rom (
+        .clka(clk),
+        .ena(1'b1),
+        .wea(1'b0),
+        .addra(addr),
+        .dina({DATA_WIDTH{1'b0}}),
+        .douta(data_out)
+    );
+
+    // Box storage registers - dynamically sized
+    reg [DATA_WIDTH-1:0] boxes [0:NUM_BOXES-1][0:4]; // X, Y, W, H, S for each box
+    reg [DATA_WIDTH-1:0] scores [0:NUM_BOXES-1];
+    reg [NUM_BOXES-1:0] valid;
+    reg [NUM_BOXES-1:0] suppressed_reg;
+    
+    assign suppressed = suppressed_reg;
+
+    // FSM states
+    localparam IDLE = 4'd0;
+    localparam LOAD_BOXES = 4'd1;
+    localparam WAIT_LAST_DATA = 4'd2;
+    localparam SORT_INIT = 4'd3;
+    localparam SORT_BOXES = 4'd4;
+    localparam SORT_SWAP = 4'd5;
+    localparam INIT_NMS = 4'd6;
+    localparam COMPARE_BOXES = 4'd7;
+    localparam CALCULATE_IOU = 4'd8;
+    localparam WAIT_IOU = 4'd9;
+    localparam UPDATE_VALID = 4'd10;
+    localparam FINISH = 4'd11;
+    
+    reg [3:0] state;
+    reg [ADDR_WIDTH-1:0] box_counter;
+    reg [ADDR_WIDTH-1:0] current_box;
+    reg [ADDR_WIDTH-1:0] compare_box;
+    reg [2:0] wait_counter;
+    reg [$clog2(NUM_BOXES):0] sort_passes; // Dynamic width for sort passes
+    reg sorting_done;
+    reg swap_needed;
+    
+    // IOU calculation signals
+    wire [DATA_WIDTH-1:0] iou_result;
+    reg iou_start;
+    wire iou_done;
+    reg [3:0] iou_wait_counter; // Counter for IOU pipeline delay - increased for 7-stage pipeline
+    
+    // Temporary registers for swapping
+    reg [DATA_WIDTH-1:0] temp_score;
+    reg [DATA_WIDTH-1:0] temp_box [0:4];
+    
+    // Registered inputs for IOU calculator for better timing
+    reg [DATA_WIDTH-1:0] iou_x1, iou_y1, iou_w1, iou_h1;
+    reg [DATA_WIDTH-1:0] iou_x2, iou_y2, iou_w2, iou_h2;
+    
+    // IOU calculator (optimized 7-stage pipeline)
+    calculate_iou iou_calculator (
+        .clk(clk),
+        .reset(reset),
+        .start(iou_start),
+        .x1(iou_x1), .y1(iou_y1), .w1(iou_w1), .h1(iou_h1),
+        .x2(iou_x2), .y2(iou_y2), .w2(iou_w2), .h2(iou_h2),
+        .iou(iou_result),
+        .done(iou_done)
+    );
+
+    // Synthesis-friendly initialization
+    integer init_i, init_j;
+    
+    // Main FSM
+    always @(posedge clk) begin
+        if (reset) begin
+            state <= IDLE;
+            box_counter <= 0;
+            current_box <= 0;
+            compare_box <= 0;
+            suppressed_reg <= {NUM_BOXES{1'b0}};
+            valid <= {NUM_BOXES{1'b1}};
+            addr <= 0;
+            iou_start <= 0;
+            wait_counter <= 0;
+            sort_passes <= 0;
+            sorting_done <= 0;
+            swap_needed <= 0;
+            temp_score <= 0;
+            iou_wait_counter <= 0;
+            
+            // Initialize IOU input registers
+            iou_x1 <= 0; iou_y1 <= 0; iou_w1 <= 0; iou_h1 <= 0;
+            iou_x2 <= 0; iou_y2 <= 0; iou_w2 <= 0; iou_h2 <= 0;
+            
+            // Initialize arrays in synthesis-friendly way
+            for (init_i = 0; init_i < NUM_BOXES; init_i = init_i + 1) begin
+                scores[init_i] <= 0;
+                for (init_j = 0; init_j < 5; init_j = init_j + 1) begin
+                    boxes[init_i][init_j] <= 0;
+                end
+            end
+            for (init_j = 0; init_j < 5; init_j = init_j + 1) begin
+                temp_box[init_j] <= 0;
+            end
+        end else begin
+            case (state)
+                IDLE: begin
+                    state <= LOAD_BOXES;
+                    box_counter <= 0;
+                    addr <= 0;
+                    wait_counter <= 0;
+                end
+                
+                LOAD_BOXES: begin
+                    if (addr < TOTAL_ENTRIES) begin
+                        addr <= addr + 1;
+                    end else begin
+                        // Wait for the last 2 data items to be processed
+                        state <= WAIT_LAST_DATA;
+                        wait_counter <= 0;
+                    end
+                    
+                    // Store data using delayed_addr_2 (2-cycle delayed address)
+                    // Only store when we have valid delayed address within range
+                    if (delayed_addr_2 < TOTAL_ENTRIES && delayed_addr_2 != {ADDR_WIDTH{1'b1}}) begin
+                        case (delayed_addr_2 % 5)
+                            0: boxes[delayed_addr_2/5][0] <= data_out; // X
+                            1: boxes[delayed_addr_2/5][1] <= data_out; // Y
+                            2: boxes[delayed_addr_2/5][2] <= data_out; // W
+                            3: boxes[delayed_addr_2/5][3] <= data_out; // H
+                            4: begin
+                                boxes[delayed_addr_2/5][4] <= data_out; // S
+                                scores[delayed_addr_2/5] <= data_out;
+                            end
+                        endcase
+                    end
+                end
+                
+                WAIT_LAST_DATA: begin
+                    // Wait 2 more cycles to get the last data from BRAM
+                    if (wait_counter < 2) begin
+                        wait_counter <= wait_counter + 1;
+                        // Continue storing delayed data
+                        if (delayed_addr_2 < TOTAL_ENTRIES && delayed_addr_2 != {ADDR_WIDTH{1'b1}}) begin
+                            case (delayed_addr_2 % 5)
+                                0: boxes[delayed_addr_2/5][0] <= data_out; // X
+                                1: boxes[delayed_addr_2/5][1] <= data_out; // Y
+                                2: boxes[delayed_addr_2/5][2] <= data_out; // W
+                                3: boxes[delayed_addr_2/5][3] <= data_out; // H
+                                4: begin
+                                    boxes[delayed_addr_2/5][4] <= data_out; // S
+                                    scores[delayed_addr_2/5] <= data_out;
+                                end
+                            endcase
+                        end
+                    end else begin
+                        state <= SORT_INIT;
+                        sort_passes <= 0;
+                        sorting_done <= 0;
+                    end
+                end
+                
+                SORT_INIT: begin
+                    box_counter <= 0;
+                    state <= SORT_BOXES;
+                end
+                
+                SORT_BOXES: begin
+                    // Bubble sort implementation - one comparison per clock
+                    if (box_counter < NUM_BOXES-1) begin
+                        if (scores[box_counter] < scores[box_counter+1]) begin
+                            // Store values in temp registers first
+                            temp_score <= scores[box_counter];
+                            temp_box[0] <= boxes[box_counter][0];
+                            temp_box[1] <= boxes[box_counter][1];
+                            temp_box[2] <= boxes[box_counter][2];
+                            temp_box[3] <= boxes[box_counter][3];
+                            temp_box[4] <= boxes[box_counter][4];
+                            swap_needed <= 1'b1;
+                            state <= SORT_SWAP;
+                        end else begin
+                            box_counter <= box_counter + 1;
+                        end
+                    end else begin
+                        // One pass completed
+                        sort_passes <= sort_passes + 1;
+                        if (sort_passes < NUM_BOXES-1) begin
+                            // Need more passes
+                            state <= SORT_INIT;
+                        end else begin
+                            // Sorting complete
+                            state <= INIT_NMS;
+                            current_box <= 0;
+                            suppressed_reg <= {NUM_BOXES{1'b0}};
+                            valid <= {NUM_BOXES{1'b1}};
+                        end
+                    end
+                end
+                
+                SORT_SWAP: begin
+                    if (swap_needed) begin
+                        // Perform the swap using temp registers
+                        scores[box_counter] <= scores[box_counter+1];
+                        scores[box_counter+1] <= temp_score;
+                        boxes[box_counter][0] <= boxes[box_counter+1][0];
+                        boxes[box_counter][1] <= boxes[box_counter+1][1];
+                        boxes[box_counter][2] <= boxes[box_counter+1][2];
+                        boxes[box_counter][3] <= boxes[box_counter+1][3];
+                        boxes[box_counter][4] <= boxes[box_counter+1][4];
+                        boxes[box_counter+1][0] <= temp_box[0];
+                        boxes[box_counter+1][1] <= temp_box[1];
+                        boxes[box_counter+1][2] <= temp_box[2];
+                        boxes[box_counter+1][3] <= temp_box[3];
+                        boxes[box_counter+1][4] <= temp_box[4];
+                        swap_needed <= 1'b0;
+                    end
+                    box_counter <= box_counter + 1;
+                    state <= SORT_BOXES;
+                end
+                
+                INIT_NMS: begin
+                    $display("DEBUG: INIT_NMS - current_box=%0d, NUM_BOXES=%0d, valid[%0d]=%b, suppressed[%0d]=%b", 
+                             current_box, NUM_BOXES, current_box, 
+                             (current_box < NUM_BOXES) ? valid[current_box] : 1'b0, 
+                             current_box, 
+                             (current_box < NUM_BOXES) ? suppressed_reg[current_box] : 1'b0);
+                    if (current_box < NUM_BOXES) begin
+                        if (valid[current_box] && !suppressed_reg[current_box]) begin
+                            compare_box <= current_box + 1;
+                            $display("DEBUG: Starting comparison for box %0d with boxes %0d onwards", current_box, current_box + 1);
+                            state <= COMPARE_BOXES;
+                        end else begin
+                            $display("DEBUG: Skipping box %0d (valid=%b, suppressed=%b)", 
+                                     current_box, valid[current_box], suppressed_reg[current_box]);
+                            current_box <= current_box + 1;
+                        end
+                    end else begin
+                        $display("DEBUG: NMS complete - all boxes processed");
+                        state <= FINISH;
+                    end
+                end
+                
+                COMPARE_BOXES: begin
+                    $display("DEBUG: COMPARE_BOXES - compare_box=%0d, NUM_BOXES=%0d, valid=%b, suppressed=%b", 
+                             compare_box, NUM_BOXES, valid[compare_box], suppressed_reg[compare_box]);
+                    if (compare_box < NUM_BOXES) begin
+                        if (valid[compare_box] && !suppressed_reg[compare_box]) begin
+                            $display("DEBUG: Calculating IOU between box %0d and box %0d", current_box, compare_box);
+                            // Load IOU input registers
+                            iou_x1 <= boxes[current_box][0];
+                            iou_y1 <= boxes[current_box][1];
+                            iou_w1 <= boxes[current_box][2];
+                            iou_h1 <= boxes[current_box][3];
+                            iou_x2 <= boxes[compare_box][0];
+                            iou_y2 <= boxes[compare_box][1];
+                            iou_w2 <= boxes[compare_box][2];
+                            iou_h2 <= boxes[compare_box][3];
+                            iou_start <= 1'b1;
+                            state <= CALCULATE_IOU;
+                        end else begin
+                            $display("DEBUG: Skipping comparison with box %0d (valid=%b, suppressed=%b)", 
+                                     compare_box, valid[compare_box], suppressed_reg[compare_box]);
+                            compare_box <= compare_box + 1;
+                            // Stay in COMPARE_BOXES state to check next box
+                        end
+                    end else begin
+                        $display("DEBUG: Finished comparing box %0d with all others", current_box);
+                        current_box <= current_box + 1;
+                        state <= INIT_NMS;
+                    end
+                end
+                
+                CALCULATE_IOU: begin
+                    iou_start <= 1'b0;
+                    state <= WAIT_IOU;
+                    iou_wait_counter <= 0;
+                end
+                
+                WAIT_IOU: begin
+                    // Wait for pipelined IOU calculation to complete
+                    if (iou_done) begin
+                        state <= UPDATE_VALID;
+                    end else begin
+                        // Additional safety counter to prevent infinite wait
+                        if (iou_wait_counter < 10) begin // 9 pipeline stages + margin
+                            iou_wait_counter <= iou_wait_counter + 1;
+                        end else begin
+                            state <= UPDATE_VALID; // Force progression
+                        end
+                    end
+                end
+                
+                UPDATE_VALID: begin
+                    $display("DEBUG: UPDATE_VALID - IOU=%0d, threshold=%0d, will suppress=%b", 
+                             iou_result, IOU_THRESHOLD, (iou_result > IOU_THRESHOLD));
+                    if (iou_result > IOU_THRESHOLD) begin
+                        $display("DEBUG: Suppressing box %0d", compare_box);
+                        suppressed_reg[compare_box] <= 1'b1;
+                        valid[compare_box] <= 1'b0;
+                    end else begin
+                        $display("DEBUG: Keeping box %0d", compare_box);
+                    end
+                    compare_box <= compare_box + 1;
+                    state <= COMPARE_BOXES;
+                end
+                
+                FINISH: begin
+                    // NMS complete
+                    state <= FINISH;
+                end
+                
+                default: begin
+                    state <= IDLE;
+                end
+            endcase
+        end
+    end
+
+   
+ // Debug display for BRAM access
+    always @(posedge clk) begin
+        if (state == LOAD_BOXES || state == WAIT_LAST_DATA) begin
+            if (delayed_addr_2 < TOTAL_ENTRIES && delayed_addr_2 != {ADDR_WIDTH{1'b1}}) begin
+                $display("ADDR = %2d, Data = %6d", delayed_addr_2, data_out);
+            end
+        end
+    end
+
+    // Debug display for loaded boxes
+    always @(posedge clk) begin
+        if (state == SORT_INIT && sort_passes == 0) begin
+            $display("=== Loaded Boxes (Before Sorting) ===");
+            for (init_i = 0; init_i < NUM_BOXES; init_i = init_i + 1) begin
+                $display("Box[%0d]: X=%0d, Y=%0d, W=%0d, H=%0d, S=%0d", 
+                         init_i, boxes[init_i][0], boxes[init_i][1], boxes[init_i][2], boxes[init_i][3], boxes[init_i][4]);
+            end
+        end
+    end
+
+    // Debug display for sorted boxes
+    always @(posedge clk) begin
+        if (state == INIT_NMS && current_box == 0) begin
+            $display("=== Sorted Boxes (By Score) ===");
+            for (init_i = 0; init_i < NUM_BOXES; init_i = init_i + 1) begin
+                $display("Box[%0d]: X=%0d, Y=%0d, W=%0d, H=%0d, S=%0d", 
+                         init_i, boxes[init_i][0], boxes[init_i][1], boxes[init_i][2], boxes[init_i][3], boxes[init_i][4]);
+            end
+        end
+    end
+
+    // Debug display for NMS progress
+    always @(posedge clk) begin
+        if (state == INIT_NMS) begin
+            $display("NMS: Processing current_box = %0d, valid = %b, suppressed = %b", 
+                     current_box, valid, suppressed_reg);
+        end
+        if (state == COMPARE_BOXES) begin
+            $display("NMS: Comparing current_box = %0d with compare_box = %0d", 
+                     current_box, compare_box);
+        end
+    end
+
+    // Debug display for IOU calculations
+    always @(posedge clk) begin
+        if (state == UPDATE_VALID) begin
+            $display("IOU between Box[%0d] and Box[%0d] = %0d (threshold=%0d) -> %s", 
+                     current_box, compare_box, iou_result, IOU_THRESHOLD,
+                     (iou_result > IOU_THRESHOLD) ? "SUPPRESS" : "KEEP");
+        end
+    end
+
+    // Debug display for final suppression results
+    always @(posedge clk) begin
+        if (state == FINISH) begin
+            $display("=== NMS Results ===");
+            $display("Suppressed mask: %b", suppressed_reg);
+            for (init_i = 0; init_i < NUM_BOXES; init_i = init_i + 1) begin
+                $display("Box[%0d]: %s (Score=%0d)", init_i, 
+                         suppressed_reg[init_i] ? "SUPPRESSED" : "KEPT", scores[init_i]);
+            end
+            $display("NMS completed at time %0t", $time);
+            $display("Suppression results: %b", suppressed_reg);
+        end
+    end
+
+endmodule
+
+```
+# **A-IoU1(Standard IoU formulation, including multiplications and divisions)**
+
+## A-IoU1_Code
+
+```
+module calculate_iou (
+    input wire clk,
+    input wire reset,
+    input wire start,
+    input  [17:0] x1, y1, w1, h1,
+    input  [17:0] x2, y2, w2, h2,
+    output reg [17:0] iou,
+    output reg done
+);
+    
+    // Pipeline registers for stage 1
+    reg [17:0] x1_reg, y1_reg, w1_reg, h1_reg;
+    reg [17:0] x2_reg, y2_reg, w2_reg, h2_reg;
+    reg [17:0] x1w1_reg, x2w2_reg, y1h1_reg, y2h2_reg;
+    reg start_reg;
+    
+    // Pipeline registers for stage 2
+    reg [17:0] dx_reg, dy_reg;
+    reg [17:0] w1_reg2, h1_reg2, w2_reg2, h2_reg2;
+    reg start_reg2;
+    
+    // Pipeline registers for stage 3
+    reg [17:0] inter_reg;
+    reg [17:0] denom_reg;
+    reg start_reg3;
+    
+    // Combinational logic for each stage
+    wire [17:0] x1w1_comb, x2w2_comb, y1h1_comb, y2h2_comb;
+    wire [17:0] dx_comb, dy_comb;
+    wire [17:0] inter_comb, denom_comb;
+    wire [35:0] scaled_inter_comb;
+    wire [17:0] iou_comb;
+    
+    // Stage 1: Calculate rectangle boundaries
+    assign x1w1_comb = x1_reg + w1_reg;
+    assign x2w2_comb = x2_reg + w2_reg;
+    assign y1h1_comb = y1_reg + h1_reg;
+    assign y2h2_comb = y2_reg + h2_reg;
+    
+    // Stage 2: Calculate intersection dimensions
+    assign dx_comb = (x1w1_reg < x2w2_reg ? x1w1_reg : x2w2_reg) - (x1_reg > x2_reg ? x1_reg : x2_reg);
+    assign dy_comb = (y1h1_reg < y2h2_reg ? y1h1_reg : y2h2_reg) - (y1_reg > y2_reg ? y1_reg : y2_reg);
+    
+    // Stage 3: Calculate intersection and union
+    assign inter_comb = dx_reg + dy_reg;
+    assign denom_comb = (w1_reg2 + h1_reg2 > w2_reg2 + h2_reg2) ? (w1_reg2 + h1_reg2) : (w2_reg2 + h2_reg2);
+    
+    // Stage 4: Scale and calculate final IOU
+    assign scaled_inter_comb = (denom_reg != 0) ? (inter_reg * 256) : 0;
+    assign iou_comb = (denom_reg != 0) ? scaled_inter_comb / denom_reg : 18'd0;
+    
+    // Pipeline control
+    reg [2:0] pipeline_valid;
+    
+    always @(posedge clk) begin
+        if (reset) begin
+            // Reset all pipeline registers
+            x1_reg <= 0; y1_reg <= 0; w1_reg <= 0; h1_reg <= 0;
+            x2_reg <= 0; y2_reg <= 0; w2_reg <= 0; h2_reg <= 0;
+            x1w1_reg <= 0; x2w2_reg <= 0; y1h1_reg <= 0; y2h2_reg <= 0;
+            start_reg <= 0;
+            
+            dx_reg <= 0; dy_reg <= 0;
+            w1_reg2 <= 0; h1_reg2 <= 0; w2_reg2 <= 0; h2_reg2 <= 0;
+            start_reg2 <= 0;
+            
+            inter_reg <= 0; denom_reg <= 0;
+            start_reg3 <= 0;
+            
+            iou <= 0;
+            done <= 0;
+            pipeline_valid <= 0;
+        end else begin
+            // Stage 1: Input registration and boundary calculation
+            if (start) begin
+                x1_reg <= x1; y1_reg <= y1; w1_reg <= w1; h1_reg <= h1;
+                x2_reg <= x2; y2_reg <= y2; w2_reg <= w2; h2_reg <= h2;
+                start_reg <= 1;
+            end else begin
+                start_reg <= 0;
+            end
+            
+            // Stage 1 output registration
+            x1w1_reg <= x1w1_comb;
+            x2w2_reg <= x2w2_comb;
+            y1h1_reg <= y1h1_comb;
+            y2h2_reg <= y2h2_comb;
+            
+            // Stage 2: Intersection calculation
+            dx_reg <= dx_comb;
+            dy_reg <= dy_comb;
+            w1_reg2 <= w1_reg;
+            h1_reg2 <= h1_reg;
+            w2_reg2 <= w2_reg;
+            h2_reg2 <= h2_reg;
+            start_reg2 <= start_reg;
+            
+            // Stage 3: Union calculation
+            inter_reg <= inter_comb;
+            denom_reg <= denom_comb;
+            start_reg3 <= start_reg2;
+            
+            // Stage 4: Final IOU calculation
+            iou <= iou_comb;
+            done <= start_reg3;
+            
+            // Pipeline valid tracking
+            pipeline_valid <= {pipeline_valid[1:0], start};
+        end
+    end
+
+endmodule
+
+```
+
+
 
 # **Non Maximum Suppression using approximate IOU formula without pipelining**
 
