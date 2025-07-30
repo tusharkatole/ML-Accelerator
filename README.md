@@ -13,6 +13,8 @@ Final Codes
 
 ## A-IoU2
 
+Our Design that eliminates multiplications and divisions
+
 ```
 module calculate_iou (
     input wire clk,
